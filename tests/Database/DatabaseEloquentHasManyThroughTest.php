@@ -1,11 +1,12 @@
 <?php
 
 use Mockery as m;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
-class DatabaseEloquentHasManyThroughTest extends PHPUnit_Framework_TestCase
+class DatabaseEloquentHasManyThroughTest extends TestCase
 {
     public function tearDown()
     {
@@ -174,12 +175,13 @@ class DatabaseEloquentHasManyThroughTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('first', $relation->first());
     }
 
+    /**
+     * @expectedException Illuminate\Database\Eloquent\ModelNotFoundException
+     */
     public function testFindOrFailThrowsException()
     {
         $relation = $this->getMockBuilder('Illuminate\Database\Eloquent\Relations\HasManyThrough')->setMethods(['find'])->setConstructorArgs($this->getRelationArguments())->getMock();
         $relation->expects($this->once())->method('find')->with('foo')->will($this->returnValue(null));
-
-        $this->setExpectedException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
 
         try {
             $relation->findOrFail('foo');
@@ -190,12 +192,13 @@ class DatabaseEloquentHasManyThroughTest extends PHPUnit_Framework_TestCase
         }
     }
 
+    /**
+     * @expectedException Illuminate\Database\Eloquent\ModelNotFoundException
+     */
     public function testFirstOrFailThrowsException()
     {
         $relation = $this->getMockBuilder('Illuminate\Database\Eloquent\Relations\HasManyThrough')->setMethods(['first'])->setConstructorArgs($this->getRelationArguments())->getMock();
         $relation->expects($this->once())->method('first')->with(['id' => 'foo'])->will($this->returnValue(null));
-
-        $this->setExpectedException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
 
         try {
             $relation->firstOrFail(['id' => 'foo']);

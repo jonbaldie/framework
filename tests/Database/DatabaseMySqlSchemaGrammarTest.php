@@ -1,9 +1,10 @@
 <?php
 
 use Mockery as m;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Database\Schema\Blueprint;
 
-class DatabaseMySqlSchemaGrammarTest extends PHPUnit_Framework_TestCase
+class DatabaseMySqlSchemaGrammarTest extends TestCase
 {
     public function tearDown()
     {
@@ -357,7 +358,7 @@ class DatabaseMySqlSchemaGrammarTest extends PHPUnit_Framework_TestCase
         $statements = $blueprint->toSql($this->getConnection(), $this->getGrammar());
 
         $this->assertEquals(1, count($statements));
-        $this->assertEquals('alter table `products` add `price` int not null, add `discounted_virtual` int as (price - 5) not null, add `discounted_stored` int as (price - 5) stored not null', $statements[0]);
+        $this->assertEquals('alter table `products` add `price` int not null, add `discounted_virtual` int as (price - 5), add `discounted_stored` int as (price - 5) stored', $statements[0]);
     }
 
     public function testAddingString()

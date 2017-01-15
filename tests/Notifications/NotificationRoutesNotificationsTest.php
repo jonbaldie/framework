@@ -1,9 +1,10 @@
 <?php
 
+use PHPUnit\Framework\TestCase;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Notifications\Dispatcher;
 
-class NotificationRoutesNotificationsTest extends PHPUnit_Framework_TestCase
+class NotificationRoutesNotificationsTest extends TestCase
 {
     public function tearDown()
     {
@@ -17,7 +18,7 @@ class NotificationRoutesNotificationsTest extends PHPUnit_Framework_TestCase
         $container->instance(Dispatcher::class, $factory);
         $notifiable = new RoutesNotificationsTestInstance;
         $instance = new StdClass;
-        $factory->shouldReceive('send')->with([$notifiable], $instance);
+        $factory->shouldReceive('send')->with($notifiable, $instance);
         Container::setInstance($container);
 
         $notifiable->notify($instance);

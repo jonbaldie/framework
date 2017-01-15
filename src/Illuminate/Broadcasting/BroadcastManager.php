@@ -7,8 +7,8 @@ use Closure;
 use Illuminate\Support\Arr;
 use InvalidArgumentException;
 use Illuminate\Broadcasting\Broadcasters\LogBroadcaster;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Broadcasting\Broadcasters\NullBroadcaster;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Broadcasting\Broadcasters\RedisBroadcaster;
 use Illuminate\Broadcasting\Broadcasters\PusherBroadcaster;
 use Illuminate\Contracts\Broadcasting\Factory as FactoryContract;
@@ -176,15 +176,15 @@ class BroadcastManager implements FactoryContract
 
         if (isset($this->customCreators[$config['driver']])) {
             return $this->callCustomCreator($config);
-        } else {
-            $driverMethod = 'create'.ucfirst($config['driver']).'Driver';
-
-            if (method_exists($this, $driverMethod)) {
-                return $this->{$driverMethod}($config);
-            } else {
-                throw new InvalidArgumentException("Driver [{$config['driver']}] is not supported.");
-            }
         }
+
+        $driverMethod = 'create'.ucfirst($config['driver']).'Driver';
+
+        if (! method_exists($this, $driverMethod)) {
+            throw new InvalidArgumentException("Driver [{$config['driver']}] is not supported.");
+        }
+
+        return $this->{$driverMethod}($config);
     }
 
     /**
@@ -207,7 +207,8 @@ class BroadcastManager implements FactoryContract
     protected function createPusherDriver(array $config)
     {
         return new PusherBroadcaster(
-            new Pusher($config['key'], $config['secret'], $config['app_id'], Arr::get($config, 'options', []))
+            new Pusher($config['key'], $config['secret'],
+            $config['app_id'], Arr::get($config, 'options', []))
         );
     }
 

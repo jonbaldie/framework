@@ -1,8 +1,9 @@
 <?php
 
 use Mockery as m;
+use PHPUnit\Framework\TestCase;
 
-class QueueBeanstalkdQueueTest extends PHPUnit_Framework_TestCase
+class QueueBeanstalkdQueueTest extends TestCase
 {
     public function tearDown()
     {
@@ -52,7 +53,7 @@ class QueueBeanstalkdQueueTest extends PHPUnit_Framework_TestCase
         $queue = new Illuminate\Queue\BeanstalkdQueue(m::mock('Pheanstalk\Pheanstalk'), 'default', 60);
         $pheanstalk = $queue->getPheanstalk();
         $pheanstalk->shouldReceive('useTube')->once()->with('default')->andReturn($pheanstalk);
-        $pheanstalk->shouldReceive('delete')->once()->with(1);
+        $pheanstalk->shouldReceive('delete')->once()->with(m::type('Pheanstalk\Job'));
 
         $queue->deleteMessage('default', 1);
     }
