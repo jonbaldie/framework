@@ -1,5 +1,7 @@
 <?php
 
+namespace Illuminate\Tests\Mail;
+
 use Illuminate\Mail\Mailable;
 use PHPUnit\Framework\TestCase;
 
@@ -82,7 +84,7 @@ class WelcomeMailableStub extends Mailable
     public function build()
     {
         $this->with('first_name', 'Taylor')
-            ->withLastName('Otwell');
+             ->withLastName('Otwell');
     }
 }
 

@@ -3,6 +3,7 @@
 namespace Illuminate\Database\Schema;
 
 use Closure;
+use LogicException;
 use Illuminate\Database\Connection;
 
 class Builder
@@ -29,6 +30,13 @@ class Builder
     protected $resolver;
 
     /**
+     * The default string length for migrations.
+     *
+     * @var int
+     */
+    public static $defaultStringLength = 255;
+
+    /**
      * Create a new database Schema manager.
      *
      * @param  \Illuminate\Database\Connection  $connection
@@ -38,6 +46,17 @@ class Builder
     {
         $this->connection = $connection;
         $this->grammar = $connection->getSchemaGrammar();
+    }
+
+    /**
+     * Set the default string length for migrations.
+     *
+     * @param  int  $length
+     * @return void
+     */
+    public static function defaultStringLength($length)
+    {
+        static::$defaultStringLength = $length;
     }
 
     /**
@@ -170,6 +189,18 @@ class Builder
         $this->build(tap($this->createBlueprint($table), function ($blueprint) {
             $blueprint->dropIfExists();
         }));
+    }
+
+    /**
+     * Drop all tables from the database.
+     *
+     * @return void
+     *
+     * @throws \LogicException
+     */
+    public function dropAllTables()
+    {
+        throw new LogicException('This database driver does not support dropping all tables.');
     }
 
     /**

@@ -6,6 +6,7 @@ use Faker\Factory as FakerFactory;
 use Faker\Generator as FakerGenerator;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Contracts\Queue\EntityResolver;
 use Illuminate\Database\Connectors\ConnectionFactory;
 use Illuminate\Database\Eloquent\QueueEntityResolver;
 use Illuminate\Database\Eloquent\Factory as EloquentFactory;
@@ -73,13 +74,13 @@ class DatabaseServiceProvider extends ServiceProvider
      */
     protected function registerEloquentFactory()
     {
-        $this->app->singleton(FakerGenerator::class, function () {
-            return FakerFactory::create();
+        $this->app->singleton(FakerGenerator::class, function ($app) {
+            return FakerFactory::create($app['config']->get('app.faker_locale', 'en_US'));
         });
 
         $this->app->singleton(EloquentFactory::class, function ($app) {
             return EloquentFactory::construct(
-                $app->make(FakerGenerator::class), database_path('factories')
+                $app->make(FakerGenerator::class), $this->app->databasePath('factories')
             );
         });
     }
@@ -91,7 +92,7 @@ class DatabaseServiceProvider extends ServiceProvider
      */
     protected function registerQueueableEntityResolver()
     {
-        $this->app->singleton('Illuminate\Contracts\Queue\EntityResolver', function () {
+        $this->app->singleton(EntityResolver::class, function () {
             return new QueueEntityResolver;
         });
     }

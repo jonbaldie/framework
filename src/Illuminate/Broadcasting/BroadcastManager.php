@@ -5,6 +5,7 @@ namespace Illuminate\Broadcasting;
 use Pusher;
 use Closure;
 use Illuminate\Support\Arr;
+use Psr\Log\LoggerInterface;
 use InvalidArgumentException;
 use Illuminate\Broadcasting\Broadcasters\LogBroadcaster;
 use Illuminate\Broadcasting\Broadcasters\NullBroadcaster;
@@ -119,7 +120,7 @@ class BroadcastManager implements FactoryContract
         }
 
         $this->app->make('queue')->connection($connection)->pushOn(
-            $queue, BroadcastEvent::class, ['event' => serialize(clone $event)]
+            $queue, new BroadcastEvent(clone $event)
         );
     }
 
@@ -234,7 +235,7 @@ class BroadcastManager implements FactoryContract
     protected function createLogDriver(array $config)
     {
         return new LogBroadcaster(
-            $this->app->make('Psr\Log\LoggerInterface')
+            $this->app->make(LoggerInterface::class)
         );
     }
 

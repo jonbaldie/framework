@@ -118,7 +118,7 @@ class LogServiceProvider extends ServiceProvider
     protected function handler()
     {
         if ($this->app->bound('config')) {
-            return $this->app->make('config')->get('app.log');
+            return $this->app->make('config')->get('app.log', 'single');
         }
 
         return 'single';
@@ -132,7 +132,7 @@ class LogServiceProvider extends ServiceProvider
     protected function logLevel()
     {
         if ($this->app->bound('config')) {
-            return $this->app->make('config')->get('app.log_level');
+            return $this->app->make('config')->get('app.log_level', 'debug');
         }
 
         return 'debug';

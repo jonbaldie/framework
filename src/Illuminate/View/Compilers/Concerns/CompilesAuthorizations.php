@@ -12,7 +12,7 @@ trait CompilesAuthorizations
      */
     protected function compileCan($expression)
     {
-        return "<?php if (app('Illuminate\\Contracts\\Auth\\Access\\Gate')->check{$expression}): ?>";
+        return "<?php if (app(\Illuminate\\Contracts\\Auth\\Access\\Gate::class)->check{$expression}): ?>";
     }
 
     /**
@@ -23,7 +23,7 @@ trait CompilesAuthorizations
      */
     protected function compileCannot($expression)
     {
-        return "<?php if (app('Illuminate\\Contracts\\Auth\\Access\\Gate')->denies{$expression}): ?>";
+        return "<?php if (app(\Illuminate\\Contracts\\Auth\\Access\\Gate::class)->denies{$expression}): ?>";
     }
 
     /**
@@ -34,27 +34,26 @@ trait CompilesAuthorizations
      */
     protected function compileElsecan($expression)
     {
-        return "<?php elseif (app('Illuminate\\Contracts\\Auth\\Access\\Gate')->check{$expression}): ?>";
+        return "<?php elseif (app(\Illuminate\\Contracts\\Auth\\Access\\Gate::class)->check{$expression}): ?>";
     }
 
     /**
-     * Compile the else-can statements into valid PHP.
+     * Compile the else-cannot statements into valid PHP.
      *
      * @param  string  $expression
      * @return string
      */
     protected function compileElsecannot($expression)
     {
-        return "<?php elseif (app('Illuminate\\Contracts\\Auth\\Access\\Gate')->denies{$expression}): ?>";
+        return "<?php elseif (app(\Illuminate\\Contracts\\Auth\\Access\\Gate::class)->denies{$expression}): ?>";
     }
 
     /**
      * Compile the end-can statements into valid PHP.
      *
-     * @param  string  $expression
      * @return string
      */
-    protected function compileEndcan($expression)
+    protected function compileEndcan()
     {
         return '<?php endif; ?>';
     }
@@ -62,10 +61,9 @@ trait CompilesAuthorizations
     /**
      * Compile the end-cannot statements into valid PHP.
      *
-     * @param  string  $expression
      * @return string
      */
-    protected function compileEndcannot($expression)
+    protected function compileEndcannot()
     {
         return '<?php endif; ?>';
     }

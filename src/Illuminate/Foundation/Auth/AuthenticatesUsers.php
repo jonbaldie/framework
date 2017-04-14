@@ -23,7 +23,7 @@ trait AuthenticatesUsers
      * Handle a login request to the application.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\Response
      */
     public function login(Request $request)
     {
@@ -59,7 +59,8 @@ trait AuthenticatesUsers
     protected function validateLogin(Request $request)
     {
         $this->validate($request, [
-            $this->username() => 'required', 'password' => 'required',
+            $this->username() => 'required|string',
+            'password' => 'required|string',
         ]);
     }
 
@@ -123,11 +124,15 @@ trait AuthenticatesUsers
      */
     protected function sendFailedLoginResponse(Request $request)
     {
+        $errors = [$this->username() => trans('auth.failed')];
+
+        if ($request->expectsJson()) {
+            return response()->json($errors, 422);
+        }
+
         return redirect()->back()
             ->withInput($request->only($this->username(), 'remember'))
-            ->withErrors([
-                $this->username() => trans('auth.failed'),
-            ]);
+            ->withErrors($errors);
     }
 
     /**
@@ -143,7 +148,7 @@ trait AuthenticatesUsers
     /**
      * Log the user out of the application.
      *
-     * @param \Illuminate\Http\Request  $request
+     * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\Response
      */
     public function logout(Request $request)

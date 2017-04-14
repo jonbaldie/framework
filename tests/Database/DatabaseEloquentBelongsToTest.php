@@ -1,5 +1,7 @@
 <?php
 
+namespace Illuminate\Tests\Database;
+
 use Mockery as m;
 use PHPUnit\Framework\TestCase;
 use Illuminate\Database\Eloquent\Collection;
@@ -28,6 +30,14 @@ class DatabaseEloquentBelongsToTest extends TestCase
         $relation = $this->getRelation();
         $relation->getQuery()->shouldReceive('whereIn')->once()->with('relation.id', ['foreign.value', 'foreign.value.two']);
         $models = [new EloquentBelongsToModelStub, new EloquentBelongsToModelStub, new AnotherEloquentBelongsToModelStub];
+        $relation->addEagerConstraints($models);
+    }
+
+    public function testIdsInEagerConstraintsCanBeZero()
+    {
+        $relation = $this->getRelation();
+        $relation->getQuery()->shouldReceive('whereIn')->once()->with('relation.id', ['foreign.value', 0]);
+        $models = [new EloquentBelongsToModelStub, new EloquentBelongsToModelStubWithZeroId];
         $relation->addEagerConstraints($models);
     }
 
@@ -131,17 +141,22 @@ class DatabaseEloquentBelongsToTest extends TestCase
     }
 }
 
-class EloquentBelongsToModelStub extends Illuminate\Database\Eloquent\Model
+class EloquentBelongsToModelStub extends \Illuminate\Database\Eloquent\Model
 {
     public $foreign_key = 'foreign.value';
 }
 
-class AnotherEloquentBelongsToModelStub extends Illuminate\Database\Eloquent\Model
+class AnotherEloquentBelongsToModelStub extends \Illuminate\Database\Eloquent\Model
 {
     public $foreign_key = 'foreign.value.two';
 }
 
-class MissingEloquentBelongsToModelStub extends Illuminate\Database\Eloquent\Model
+class EloquentBelongsToModelStubWithZeroId extends \Illuminate\Database\Eloquent\Model
+{
+    public $foreign_key = 0;
+}
+
+class MissingEloquentBelongsToModelStub extends \Illuminate\Database\Eloquent\Model
 {
     public $foreign_key;
 }

@@ -406,6 +406,17 @@ class Blueprint
     }
 
     /**
+     * Create a new auto-incrementing tiny integer (1-byte) column on the table.
+     *
+     * @param  string  $column
+     * @return \Illuminate\Support\Fluent
+     */
+    public function tinyIncrements($column)
+    {
+        return $this->unsignedTinyInteger($column, true);
+    }
+
+    /**
      * Create a new auto-incrementing small integer (2-byte) column on the table.
      *
      * @param  string  $column
@@ -445,8 +456,10 @@ class Blueprint
      * @param  int  $length
      * @return \Illuminate\Support\Fluent
      */
-    public function char($column, $length = 255)
+    public function char($column, $length = null)
     {
+        $length = $length ?: Builder::$defaultStringLength;
+
         return $this->addColumn('char', $column, compact('length'));
     }
 
@@ -457,8 +470,10 @@ class Blueprint
      * @param  int  $length
      * @return \Illuminate\Support\Fluent
      */
-    public function string($column, $length = 255)
+    public function string($column, $length = null)
     {
+        $length = $length ?: Builder::$defaultStringLength;
+
         return $this->addColumn('string', $column, compact('length'));
     }
 

@@ -1,5 +1,7 @@
 <?php
 
+namespace Illuminate\Tests\Console\Scheduling;
+
 use Mockery as m;
 use PHPUnit\Framework\TestCase;
 use Illuminate\Console\Scheduling\Event;
@@ -15,14 +17,14 @@ class EventTest extends TestCase
     {
         $quote = (DIRECTORY_SEPARATOR == '\\') ? '"' : "'";
 
-        $event = new Event(m::mock('Illuminate\Contracts\Cache\Repository'), 'php -i');
+        $event = new Event(m::mock('Illuminate\Console\Scheduling\Mutex'), 'php -i');
 
         $defaultOutput = (DIRECTORY_SEPARATOR == '\\') ? 'NUL' : '/dev/null';
         $this->assertSame("php -i > {$quote}{$defaultOutput}{$quote} 2>&1", $event->buildCommand());
 
         $quote = (DIRECTORY_SEPARATOR == '\\') ? '"' : "'";
 
-        $event = new Event(m::mock('Illuminate\Contracts\Cache\Repository'), 'php -i');
+        $event = new Event(m::mock('Illuminate\Console\Scheduling\Mutex'), 'php -i');
         $event->runInBackground();
 
         $defaultOutput = (DIRECTORY_SEPARATOR == '\\') ? 'NUL' : '/dev/null';
@@ -33,12 +35,12 @@ class EventTest extends TestCase
     {
         $quote = (DIRECTORY_SEPARATOR == '\\') ? '"' : "'";
 
-        $event = new Event(m::mock('Illuminate\Contracts\Cache\Repository'), 'php -i');
+        $event = new Event(m::mock('Illuminate\Console\Scheduling\Mutex'), 'php -i');
 
         $event->sendOutputTo('/dev/null');
         $this->assertSame("php -i > {$quote}/dev/null{$quote} 2>&1", $event->buildCommand());
 
-        $event = new Event(m::mock('Illuminate\Contracts\Cache\Repository'), 'php -i');
+        $event = new Event(m::mock('Illuminate\Console\Scheduling\Mutex'), 'php -i');
 
         $event->sendOutputTo('/my folder/foo.log');
         $this->assertSame("php -i > {$quote}/my folder/foo.log{$quote} 2>&1", $event->buildCommand());
@@ -48,7 +50,7 @@ class EventTest extends TestCase
     {
         $quote = (DIRECTORY_SEPARATOR == '\\') ? '"' : "'";
 
-        $event = new Event(m::mock('Illuminate\Contracts\Cache\Repository'), 'php -i');
+        $event = new Event(m::mock('Illuminate\Console\Scheduling\Mutex'), 'php -i');
 
         $event->appendOutputTo('/dev/null');
         $this->assertSame("php -i >> {$quote}/dev/null{$quote} 2>&1", $event->buildCommand());

@@ -1,5 +1,7 @@
 <?php
 
+namespace Illuminate\Tests\Console\Scheduling;
+
 use Mockery as m;
 use PHPUnit\Framework\TestCase;
 use Illuminate\Console\Scheduling\Event;
@@ -14,7 +16,7 @@ class FrequencyTest extends TestCase
     public function setUp()
     {
         $this->event = new Event(
-            m::mock('Illuminate\Contracts\Cache\Repository'),
+            m::mock('Illuminate\Console\Scheduling\Mutex'),
             'php foo'
         );
     }

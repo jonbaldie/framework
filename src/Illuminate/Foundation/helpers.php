@@ -94,15 +94,18 @@ if (! function_exists('app')) {
      * Get the available container instance.
      *
      * @param  string  $abstract
+     * @param  array   $parameters
      * @return mixed|\Illuminate\Foundation\Application
      */
-    function app($abstract = null)
+    function app($abstract = null, array $parameters = [])
     {
         if (is_null($abstract)) {
             return Container::getInstance();
         }
 
-        return Container::getInstance()->make($abstract);
+        return empty($parameters)
+            ? Container::getInstance()->make($abstract)
+            : Container::getInstance()->makeWith($abstract, $parameters);
     }
 }
 
@@ -343,7 +346,7 @@ if (! function_exists('database_path')) {
      */
     function database_path($path = '')
     {
-        return app()->databasePath().($path ? DIRECTORY_SEPARATOR.$path : $path);
+        return app()->databasePath($path);
     }
 }
 
@@ -373,6 +376,20 @@ if (! function_exists('dispatch')) {
     }
 }
 
+if (! function_exists('dispatch_now')) {
+    /**
+     * Dispatch a command to its appropriate handler in the current process.
+     *
+     * @param  mixed  $job
+     * @param  mixed  $handler
+     * @return mixed
+     */
+    function dispatch_now($job, $handler = null)
+    {
+        return app(Dispatcher::class)->dispatchNow($job, $handler);
+    }
+}
+
 if (! function_exists('elixir')) {
     /**
      * Get the path to a versioned Elixir file.
@@ -396,6 +413,8 @@ if (! function_exists('elixir')) {
                 $manifestPath = $buildDirectory;
             }
         }
+
+        $file = ltrim($file, '/');
 
         if (isset($manifest[$file])) {
             return '/'.trim($buildDirectory.'/'.$manifest[$file], '/');
@@ -465,7 +484,7 @@ if (! function_exists('env')) {
 
 if (! function_exists('event')) {
     /**
-     * Fire an event and call the listeners.
+     * Dispatch an event and call the listeners.
      *
      * @param  string|object  $event
      * @param  mixed  $payload
@@ -474,7 +493,7 @@ if (! function_exists('event')) {
      */
     function event(...$args)
     {
-        return app('events')->fire(...$args);
+        return app('events')->dispatch(...$args);
     }
 }
 
@@ -492,7 +511,7 @@ if (! function_exists('factory')) {
         $arguments = func_get_args();
 
         if (isset($arguments[1]) && is_string($arguments[1])) {
-            return $factory->of($arguments[0], $arguments[1])->times(isset($arguments[2]) ? $arguments[2] : 1);
+            return $factory->of($arguments[0], $arguments[1])->times(isset($arguments[2]) ? $arguments[2] : null);
         } elseif (isset($arguments[1])) {
             return $factory->of($arguments[0])->times($arguments[1]);
         } else {
@@ -543,6 +562,51 @@ if (! function_exists('method_field')) {
     function method_field($method)
     {
         return new HtmlString('<input type="hidden" name="_method" value="'.$method.'">');
+    }
+}
+
+if (! function_exists('mix')) {
+    /**
+     * Get the path to a versioned Mix file.
+     *
+     * @param  string  $path
+     * @param  string  $manifestDirectory
+     * @return \Illuminate\Support\HtmlString
+     *
+     * @throws \Exception
+     */
+    function mix($path, $manifestDirectory = '')
+    {
+        static $manifest;
+
+        if (! starts_with($path, '/')) {
+            $path = "/{$path}";
+        }
+
+        if ($manifestDirectory && ! starts_with($manifestDirectory, '/')) {
+            $manifestDirectory = "/{$manifestDirectory}";
+        }
+
+        if (file_exists(public_path($manifestDirectory.'/hot'))) {
+            return new HtmlString("http://localhost:8080{$path}");
+        }
+
+        if (! $manifest) {
+            if (! file_exists($manifestPath = public_path($manifestDirectory.'/mix-manifest.json'))) {
+                throw new Exception('The Mix manifest does not exist.');
+            }
+
+            $manifest = json_decode(file_get_contents($manifestPath), true);
+        }
+
+        if (! array_key_exists($path, $manifest)) {
+            throw new Exception(
+                "Unable to locate Mix file: {$path}. Please check your ".
+                'webpack.mix.js output paths and try again.'
+            );
+        }
+
+        return new HtmlString($manifestDirectory.$manifest[$path]);
     }
 }
 
@@ -626,7 +690,7 @@ if (! function_exists('request')) {
             return app('request')->only($key);
         }
 
-        return app('request')->input($key, $default);
+        return data_get(app('request')->all(), $key, $default);
     }
 }
 
@@ -652,7 +716,7 @@ if (! function_exists('resource_path')) {
      */
     function resource_path($path = '')
     {
-        return app()->resourcePath().($path ? DIRECTORY_SEPARATOR.$path : $path);
+        return app()->resourcePath($path);
     }
 }
 
@@ -753,6 +817,38 @@ if (! function_exists('storage_path')) {
     function storage_path($path = '')
     {
         return app('path.storage').($path ? DIRECTORY_SEPARATOR.$path : $path);
+    }
+}
+
+if (! function_exists('throw_if')) {
+    /**
+     * Throw the given exception if the given boolean is true.
+     *
+     * @param  bool  $boolean
+     * @param  \Throwable  $exception
+     * @return void
+     */
+    function throw_if($boolean, $exception)
+    {
+        if ($boolean) {
+            throw $exception;
+        }
+    }
+}
+
+if (! function_exists('throw_unless')) {
+    /**
+     * Throw the given exception unless the given boolean is true.
+     *
+     * @param  bool  $boolean
+     * @param  \Throwable  $exception
+     * @return void
+     */
+    function throw_unless($boolean, $exception)
+    {
+        if (! $boolean) {
+            throw $exception;
+        }
     }
 }
 

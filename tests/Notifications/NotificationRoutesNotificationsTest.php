@@ -1,5 +1,9 @@
 <?php
 
+namespace Illuminate\Tests\Notifications;
+
+use Mockery;
+use stdClass;
 use PHPUnit\Framework\TestCase;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Notifications\Dispatcher;
@@ -35,7 +39,7 @@ class NotificationRoutesNotificationsTest extends TestCase
 
 class RoutesNotificationsTestInstance
 {
-    use Illuminate\Notifications\RoutesNotifications;
+    use \Illuminate\Notifications\RoutesNotifications;
 
     protected $email = 'taylor@laravel.com';
     protected $phone_number = '5555555555';

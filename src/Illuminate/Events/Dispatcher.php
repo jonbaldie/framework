@@ -4,8 +4,10 @@ namespace Illuminate\Events;
 
 use Exception;
 use ReflectionClass;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Contracts\Events\Dispatcher as DispatcherContract;
 use Illuminate\Contracts\Broadcasting\Factory as BroadcastFactory;
@@ -200,7 +202,7 @@ class Dispatcher implements DispatcherContract
             // If a response is returned from the listener and event halting is enabled
             // we will just return this response, and not call the rest of the event
             // listeners. Otherwise we will add the response on the response list.
-            if (! is_null($response) && $halt) {
+            if ($halt && ! is_null($response)) {
                 return $response;
             }
 
@@ -230,7 +232,7 @@ class Dispatcher implements DispatcherContract
             list($payload, $event) = [[$event], get_class($event)];
         }
 
-        return [$event, array_wrap($payload)];
+        return [$event, Arr::wrap($payload)];
     }
 
     /**
@@ -380,9 +382,7 @@ class Dispatcher implements DispatcherContract
      */
     protected function parseClassCallable($listener)
     {
-        $segments = explode('@', $listener);
-
-        return [$segments[0], count($segments) == 2 ? $segments[1] : 'handle'];
+        return Str::parseCallback($listener, 'handle');
     }
 
     /**
@@ -395,7 +395,7 @@ class Dispatcher implements DispatcherContract
     {
         try {
             return (new ReflectionClass($class))->implementsInterface(
-                'Illuminate\Contracts\Queue\ShouldQueue'
+                ShouldQueue::class
             );
         } catch (Exception $e) {
             return false;
@@ -412,33 +412,10 @@ class Dispatcher implements DispatcherContract
     protected function createQueuedHandlerCallable($class, $method)
     {
         return function () use ($class, $method) {
-            $arguments = array_map(function ($a) {
+            $this->queueHandler($class, $method, array_map(function ($a) {
                 return is_object($a) ? clone $a : $a;
-            }, func_get_args());
-
-            if (method_exists($class, 'queue')) {
-                $this->callQueueMethodOnHandler($class, $method, $arguments);
-            } else {
-                $this->queueHandler($class, $method, $arguments);
-            }
+            }, func_get_args()));
         };
-    }
-
-    /**
-     * Call the queue method on the handler class.
-     *
-     * @param  string  $class
-     * @param  string  $method
-     * @param  array  $arguments
-     * @return void
-     */
-    protected function callQueueMethodOnHandler($class, $method, $arguments)
-    {
-        $handler = (new ReflectionClass($class))->newInstanceWithoutConstructor();
-
-        $handler->queue($this->resolveQueue(), 'Illuminate\Events\CallQueuedHandler@call', [
-            'class' => $class, 'method' => $method, 'data' => serialize($arguments),
-        ]);
     }
 
     /**
@@ -451,19 +428,49 @@ class Dispatcher implements DispatcherContract
      */
     protected function queueHandler($class, $method, $arguments)
     {
-        $handler = (new ReflectionClass($class))->newInstanceWithoutConstructor();
+        list($listener, $job) = $this->createListenerAndJob($class, $method, $arguments);
 
-        $connection = isset($handler->connection) ? $handler->connection : null;
+        $connection = $this->resolveQueue()->connection(
+            isset($listener->connection) ? $listener->connection : null
+        );
 
-        $queue = isset($handler->queue) ? $handler->queue : null;
+        $queue = isset($listener->queue) ? $listener->queue : null;
 
-        $this->resolveQueue()
-                ->connection($connection)
-                ->pushOn($queue, 'Illuminate\Events\CallQueuedHandler@call', [
-                    'class' => $class,
-                    'method' => $method,
-                    'data' => serialize($arguments),
-                ]);
+        isset($listener->delay)
+                    ? $connection->laterOn($queue, $listener->delay, $job)
+                    : $connection->pushOn($queue, $job);
+    }
+
+    /**
+     * Create the listener and job for a queued listener.
+     *
+     * @param  string  $class
+     * @param  string  $method
+     * @param  array  $arguments
+     * @return array
+     */
+    protected function createListenerAndJob($class, $method, $arguments)
+    {
+        $listener = (new ReflectionClass($class))->newInstanceWithoutConstructor();
+
+        return [$listener, $this->propogateListenerOptions(
+            $listener, new CallQueuedListener($class, $method, $arguments)
+        )];
+    }
+
+    /**
+     * Propogate listener options to the job.
+     *
+     * @param  mixed  $listener
+     * @param  mixed  $job
+     * @return mixed
+     */
+    protected function propogateListenerOptions($listener, $job)
+    {
+        return tap($job, function ($job) use ($listener) {
+            $job->tries = isset($listener->tries) ? $listener->tries : null;
+            $job->timeout = isset($listener->timeout) ? $listener->timeout : null;
+        });
     }
 
     /**

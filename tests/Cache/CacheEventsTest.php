@@ -1,5 +1,7 @@
 <?php
 
+namespace Illuminate\Tests\Cache;
+
 use Mockery as m;
 use PHPUnit\Framework\TestCase;
 use Illuminate\Cache\Events\CacheHit;
@@ -7,7 +9,7 @@ use Illuminate\Cache\Events\KeyWritten;
 use Illuminate\Cache\Events\CacheMissed;
 use Illuminate\Cache\Events\KeyForgotten;
 
-class CacheEventTest extends TestCase
+class CacheEventsTest extends TestCase
 {
     public function tearDown()
     {

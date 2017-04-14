@@ -1,5 +1,7 @@
 <?php
 
+namespace Illuminate\Tests\Support;
+
 use Illuminate\Support\Str;
 use PHPUnit\Framework\TestCase;
 
@@ -121,6 +123,11 @@ class SupportStrTest extends TestCase
         $this->assertTrue(Str::is($patternObject, $valueObject));
     }
 
+    public function testKebab()
+    {
+        $this->assertEquals('laravel-php-framework', Str::kebab('LaravelPhpFramework'));
+    }
+
     public function testLower()
     {
         $this->assertEquals('foo bar baz', Str::lower('FOO BAR BAZ'));
@@ -186,6 +193,8 @@ class SupportStrTest extends TestCase
         // ensure cache keys don't overlap
         $this->assertEquals('laravel__php__framework', Str::snake('LaravelPhpFramework', '__'));
         $this->assertEquals('laravel_php_framework_', Str::snake('LaravelPhpFramework_', '_'));
+        $this->assertEquals('laravel_php_framework', Str::snake('laravel php Framework'));
+        $this->assertEquals('laravel_php_frame_work', Str::snake('laravel php FrameWork'));
     }
 
     public function testStudly()

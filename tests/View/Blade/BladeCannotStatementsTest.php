@@ -1,5 +1,7 @@
 <?php
 
+namespace Illuminate\Tests\Blade;
+
 use Mockery as m;
 use PHPUnit\Framework\TestCase;
 use Illuminate\View\Compilers\BladeCompiler;
@@ -19,9 +21,9 @@ breeze
 @elsecannot(\'delete\', [$post])
 sneeze
 @endcannot';
-        $expected = '<?php if (app(\'Illuminate\\Contracts\\Auth\\Access\\Gate\')->denies(\'update\', [$post])): ?>
+        $expected = '<?php if (app(\\Illuminate\\Contracts\\Auth\\Access\\Gate::class)->denies(\'update\', [$post])): ?>
 breeze
-<?php elseif (app(\'Illuminate\\Contracts\\Auth\\Access\\Gate\')->denies(\'delete\', [$post])): ?>
+<?php elseif (app(\\Illuminate\\Contracts\\Auth\\Access\\Gate::class)->denies(\'delete\', [$post])): ?>
 sneeze
 <?php endif; ?>';
         $this->assertEquals($expected, $compiler->compileString($string));

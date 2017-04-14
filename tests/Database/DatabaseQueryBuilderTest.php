@@ -1,5 +1,7 @@
 <?php
 
+namespace Illuminate\Tests\Database;
+
 use Mockery as m;
 use PHPUnit\Framework\TestCase;
 use Illuminate\Database\Query\Builder;
@@ -69,6 +71,13 @@ class DatabaseQueryBuilderTest extends TestCase
         $this->assertEquals('select "x"."y" as "foo.bar" from "baz"', $builder->toSql());
     }
 
+    public function testAliasWrappingWithSpacesInDatabaseName()
+    {
+        $builder = $this->getBuilder();
+        $builder->select('w x.y.z as foo.bar')->from('baz');
+        $this->assertEquals('select "w x"."y"."z" as "foo.bar" from "baz"', $builder->toSql());
+    }
+
     public function testAddingSelects()
     {
         $builder = $this->getBuilder();
@@ -123,7 +132,26 @@ class DatabaseQueryBuilderTest extends TestCase
 
     public function testWhenCallback()
     {
-        $callback = function ($query) {
+        $callback = function ($query, $condition) {
+            $this->assertTrue($condition);
+
+            $query->where('id', '=', 1);
+        };
+
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->when(true, $callback)->where('email', 'foo');
+        $this->assertEquals('select * from "users" where "id" = ? and "email" = ?', $builder->toSql());
+
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->when(false, $callback)->where('email', 'foo');
+        $this->assertEquals('select * from "users" where "email" = ?', $builder->toSql());
+    }
+
+    public function testWhenCallbackWithReturn()
+    {
+        $callback = function ($query, $condition) {
+            $this->assertTrue($condition);
+
             return $query->where('id', '=', 1);
         };
 
@@ -138,23 +166,38 @@ class DatabaseQueryBuilderTest extends TestCase
 
     public function testWhenCallbackWithDefault()
     {
-        $callback = function ($query) {
-            return $query->where('id', '=', 1);
+        $callback = function ($query, $condition) {
+            $this->assertEquals($condition, 'truthy');
+
+            $query->where('id', '=', 1);
         };
 
-        $default = function ($query) {
-            return $query->where('id', '=', 2);
+        $default = function ($query, $condition) {
+            $this->assertEquals($condition, 0);
+
+            $query->where('id', '=', 2);
         };
 
         $builder = $this->getBuilder();
-        $builder->select('*')->from('users')->when(true, $callback, $default)->where('email', 'foo');
+        $builder->select('*')->from('users')->when('truthy', $callback, $default)->where('email', 'foo');
         $this->assertEquals('select * from "users" where "id" = ? and "email" = ?', $builder->toSql());
         $this->assertEquals([0 => 1, 1 => 'foo'], $builder->getBindings());
 
         $builder = $this->getBuilder();
-        $builder->select('*')->from('users')->when(false, $callback, $default)->where('email', 'foo');
+        $builder->select('*')->from('users')->when(0, $callback, $default)->where('email', 'foo');
         $this->assertEquals('select * from "users" where "id" = ? and "email" = ?', $builder->toSql());
         $this->assertEquals([0 => 2, 1 => 'foo'], $builder->getBindings());
+    }
+
+    public function testTapCallback()
+    {
+        $callback = function ($query) {
+            return $query->where('id', '=', 1);
+        };
+
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->tap($callback)->where('email', 'foo');
+        $this->assertEquals('select * from "users" where "id" = ? and "email" = ?', $builder->toSql());
     }
 
     public function testBasicWheres()
@@ -450,6 +493,13 @@ class DatabaseQueryBuilderTest extends TestCase
         $builder->select('a')->from('t1')->where('a', 10)->where('b', 1)->union($union)->orderBy('a')->limit(10);
         $this->assertEquals($expectedSql, $builder->toSql());
         $this->assertEquals([0 => 10, 1 => 1, 2 => 11, 3 => 2], $builder->getBindings());
+
+        $builder = $this->getSQLiteBuilder();
+        $expectedSql = 'select * from (select "name" from "users" where "id" = ?) union select * from (select "name" from "users" where "id" = ?)';
+        $builder->select('name')->from('users')->where('id', '=', 1);
+        $builder->union($this->getSQLiteBuilder()->select('name')->from('users')->where('id', '=', 2));
+        $this->assertEquals($expectedSql, $builder->toSql());
+        $this->assertEquals([0 => 1, 1 => 2], $builder->getBindings());
     }
 
     public function testUnionAlls()
@@ -609,6 +659,10 @@ class DatabaseQueryBuilderTest extends TestCase
         $builder->select('*')->from('users')->orderBy('email')->orderByRaw('"age" ? desc', ['foo']);
         $this->assertEquals('select * from "users" order by "email" asc, "age" ? desc', $builder->toSql());
         $this->assertEquals(['foo'], $builder->getBindings());
+
+        $builder = $this->getBuilder();
+        $builder->select('*')->from('users')->orderByDesc('name');
+        $this->assertEquals('select * from "users" order by "name" desc', $builder->toSql());
     }
 
     public function testHavings()
@@ -1222,7 +1276,7 @@ class DatabaseQueryBuilderTest extends TestCase
     {
         $builder = $this->getBuilder();
         $builder->getProcessor()->shouldReceive('processInsertGetId')->once()->with($builder, 'insert into "users" ("email", "bar") values (?, bar)', ['foo'], 'id')->andReturn(1);
-        $result = $builder->from('users')->insertGetId(['email' => 'foo', 'bar' => new Illuminate\Database\Query\Expression('bar')], 'id');
+        $result = $builder->from('users')->insertGetId(['email' => 'foo', 'bar' => new \Illuminate\Database\Query\Expression('bar')], 'id');
         $this->assertEquals(1, $result);
     }
 
@@ -1363,7 +1417,7 @@ class DatabaseQueryBuilderTest extends TestCase
     {
         $builder = m::mock('Illuminate\Database\Query\Builder[where,exists,insert]', [
             m::mock('Illuminate\Database\ConnectionInterface'),
-            new Illuminate\Database\Query\Grammars\Grammar,
+            new \Illuminate\Database\Query\Grammars\Grammar,
             m::mock('Illuminate\Database\Query\Processors\Processor'),
         ]);
 
@@ -1375,7 +1429,7 @@ class DatabaseQueryBuilderTest extends TestCase
 
         $builder = m::mock('Illuminate\Database\Query\Builder[where,exists,update]', [
             m::mock('Illuminate\Database\ConnectionInterface'),
-            new Illuminate\Database\Query\Grammars\Grammar,
+            new \Illuminate\Database\Query\Grammars\Grammar,
             m::mock('Illuminate\Database\Query\Processors\Processor'),
         ]);
 
@@ -1418,6 +1472,11 @@ class DatabaseQueryBuilderTest extends TestCase
         $this->assertEquals(1, $result);
 
         $builder = $this->getMySqlBuilder();
+        $builder->getConnection()->shouldReceive('delete')->once()->with('delete `a` from `users` as `a` inner join `users` as `b` on `a`.`id` = `b`.`user_id` where `email` = ?', ['foo'])->andReturn(1);
+        $result = $builder->from('users AS a')->join('users AS b', 'a.id', '=', 'b.user_id')->where('email', '=', 'foo')->orderBy('id')->limit(1)->delete();
+        $this->assertEquals(1, $result);
+
+        $builder = $this->getMySqlBuilder();
         $builder->getConnection()->shouldReceive('delete')->once()->with('delete `users` from `users` inner join `contacts` on `users`.`id` = `contacts`.`id` where `users`.`id` = ?', [1])->andReturn(1);
         $result = $builder->from('users')->join('contacts', 'users.id', '=', 'contacts.id')->orderBy('id')->take(1)->delete(1);
         $this->assertEquals(1, $result);
@@ -1425,6 +1484,11 @@ class DatabaseQueryBuilderTest extends TestCase
         $builder = $this->getSqlServerBuilder();
         $builder->getConnection()->shouldReceive('delete')->once()->with('delete [users] from [users] inner join [contacts] on [users].[id] = [contacts].[id] where [email] = ?', ['foo'])->andReturn(1);
         $result = $builder->from('users')->join('contacts', 'users.id', '=', 'contacts.id')->where('email', '=', 'foo')->delete();
+        $this->assertEquals(1, $result);
+
+        $builder = $this->getSqlServerBuilder();
+        $builder->getConnection()->shouldReceive('delete')->once()->with('delete [a] from [users] as [a] inner join [users] as [b] on [a].[id] = [b].[user_id] where [email] = ?', ['foo'])->andReturn(1);
+        $result = $builder->from('users AS a')->join('users AS b', 'a.id', '=', 'b.user_id')->where('email', '=', 'foo')->orderBy('id')->limit(1)->delete();
         $this->assertEquals(1, $result);
 
         $builder = $this->getSqlServerBuilder();
@@ -1439,7 +1503,7 @@ class DatabaseQueryBuilderTest extends TestCase
         $builder->getConnection()->shouldReceive('statement')->once()->with('truncate "users"', []);
         $builder->from('users')->truncate();
 
-        $sqlite = new Illuminate\Database\Query\Grammars\SQLiteGrammar;
+        $sqlite = new \Illuminate\Database\Query\Grammars\SQLiteGrammar;
         $builder = $this->getBuilder();
         $builder->from('users');
         $this->assertEquals([
@@ -1465,7 +1529,7 @@ class DatabaseQueryBuilderTest extends TestCase
 
     public function testMySqlUpdateWrappingJson()
     {
-        $grammar = new Illuminate\Database\Query\Grammars\MySqlGrammar;
+        $grammar = new \Illuminate\Database\Query\Grammars\MySqlGrammar;
         $processor = m::mock('Illuminate\Database\Query\Processors\Processor');
 
         $connection = $this->createMock('Illuminate\Database\ConnectionInterface');
@@ -1483,7 +1547,7 @@ class DatabaseQueryBuilderTest extends TestCase
 
     public function testMySqlUpdateWithJsonRemovesBindingsCorrectly()
     {
-        $grammar = new Illuminate\Database\Query\Grammars\MySqlGrammar;
+        $grammar = new \Illuminate\Database\Query\Grammars\MySqlGrammar;
         $processor = m::mock('Illuminate\Database\Query\Processors\Processor');
 
         $connection = m::mock('Illuminate\Database\ConnectionInterface');
@@ -1686,6 +1750,11 @@ class DatabaseQueryBuilderTest extends TestCase
         $builder->select('*')->from('foo')->where('bar', '=', 'baz')->lock(false);
         $this->assertEquals('select * from `foo` where `bar` = ? lock in share mode', $builder->toSql());
         $this->assertEquals(['baz'], $builder->getBindings());
+
+        $builder = $this->getMySqlBuilder();
+        $builder->select('*')->from('foo')->where('bar', '=', 'baz')->lock('lock in share mode');
+        $this->assertEquals('select * from `foo` where `bar` = ? lock in share mode', $builder->toSql());
+        $this->assertEquals(['baz'], $builder->getBindings());
     }
 
     public function testPostgresLock()
@@ -1698,6 +1767,11 @@ class DatabaseQueryBuilderTest extends TestCase
         $builder = $this->getPostgresBuilder();
         $builder->select('*')->from('foo')->where('bar', '=', 'baz')->lock(false);
         $this->assertEquals('select * from "foo" where "bar" = ? for share', $builder->toSql());
+        $this->assertEquals(['baz'], $builder->getBindings());
+
+        $builder = $this->getPostgresBuilder();
+        $builder->select('*')->from('foo')->where('bar', '=', 'baz')->lock('for key share');
+        $this->assertEquals('select * from "foo" where "bar" = ? for key share', $builder->toSql());
         $this->assertEquals(['baz'], $builder->getBindings());
     }
 
@@ -1712,6 +1786,11 @@ class DatabaseQueryBuilderTest extends TestCase
         $builder->select('*')->from('foo')->where('bar', '=', 'baz')->lock(false);
         $this->assertEquals('select * from [foo] with(rowlock,holdlock) where [bar] = ?', $builder->toSql());
         $this->assertEquals(['baz'], $builder->getBindings());
+
+        $builder = $this->getSqlServerBuilder();
+        $builder->select('*')->from('foo')->where('bar', '=', 'baz')->lock('with(holdlock)');
+        $this->assertEquals('select * from [foo] with(holdlock) where [bar] = ?', $builder->toSql());
+        $this->assertEquals(['baz'], $builder->getBindings());
     }
 
     public function testSelectWithLockUsesWritePdo()
@@ -1720,6 +1799,11 @@ class DatabaseQueryBuilderTest extends TestCase
         $builder->getConnection()->shouldReceive('select')->once()
             ->with(m::any(), m::any(), false);
         $builder->select('*')->from('foo')->where('bar', '=', 'baz')->lock()->get();
+
+        $builder = $this->getMySqlBuilderWithProcessor();
+        $builder->getConnection()->shouldReceive('select')->once()
+            ->with(m::any(), m::any(), false);
+        $builder->select('*')->from('foo')->where('bar', '=', 'baz')->lock(false)->get();
     }
 
     public function testBindingOrder()
@@ -2095,7 +2179,7 @@ class DatabaseQueryBuilderTest extends TestCase
 
     protected function getBuilder()
     {
-        $grammar = new Illuminate\Database\Query\Grammars\Grammar;
+        $grammar = new \Illuminate\Database\Query\Grammars\Grammar;
         $processor = m::mock('Illuminate\Database\Query\Processors\Processor');
 
         return new Builder(m::mock('Illuminate\Database\ConnectionInterface'), $grammar, $processor);
@@ -2103,7 +2187,7 @@ class DatabaseQueryBuilderTest extends TestCase
 
     protected function getPostgresBuilder()
     {
-        $grammar = new Illuminate\Database\Query\Grammars\PostgresGrammar;
+        $grammar = new \Illuminate\Database\Query\Grammars\PostgresGrammar;
         $processor = m::mock('Illuminate\Database\Query\Processors\Processor');
 
         return new Builder(m::mock('Illuminate\Database\ConnectionInterface'), $grammar, $processor);
@@ -2111,7 +2195,7 @@ class DatabaseQueryBuilderTest extends TestCase
 
     protected function getMySqlBuilder()
     {
-        $grammar = new Illuminate\Database\Query\Grammars\MySqlGrammar;
+        $grammar = new \Illuminate\Database\Query\Grammars\MySqlGrammar;
         $processor = m::mock('Illuminate\Database\Query\Processors\Processor');
 
         return new Builder(m::mock('Illuminate\Database\ConnectionInterface'), $grammar, $processor);
@@ -2119,7 +2203,7 @@ class DatabaseQueryBuilderTest extends TestCase
 
     protected function getSQLiteBuilder()
     {
-        $grammar = new Illuminate\Database\Query\Grammars\SQLiteGrammar;
+        $grammar = new \Illuminate\Database\Query\Grammars\SQLiteGrammar;
         $processor = m::mock('Illuminate\Database\Query\Processors\Processor');
 
         return new Builder(m::mock('Illuminate\Database\ConnectionInterface'), $grammar, $processor);
@@ -2127,7 +2211,7 @@ class DatabaseQueryBuilderTest extends TestCase
 
     protected function getSqlServerBuilder()
     {
-        $grammar = new Illuminate\Database\Query\Grammars\SqlServerGrammar;
+        $grammar = new \Illuminate\Database\Query\Grammars\SqlServerGrammar;
         $processor = m::mock('Illuminate\Database\Query\Processors\Processor');
 
         return new Builder(m::mock('Illuminate\Database\ConnectionInterface'), $grammar, $processor);
@@ -2135,8 +2219,8 @@ class DatabaseQueryBuilderTest extends TestCase
 
     protected function getMySqlBuilderWithProcessor()
     {
-        $grammar = new Illuminate\Database\Query\Grammars\MySqlGrammar;
-        $processor = new Illuminate\Database\Query\Processors\MySqlProcessor;
+        $grammar = new \Illuminate\Database\Query\Grammars\MySqlGrammar;
+        $processor = new \Illuminate\Database\Query\Processors\MySqlProcessor;
 
         return new Builder(m::mock('Illuminate\Database\ConnectionInterface'), $grammar, $processor);
     }
@@ -2148,7 +2232,7 @@ class DatabaseQueryBuilderTest extends TestCase
     {
         $builder = m::mock('Illuminate\Database\Query\Builder', [
             m::mock('Illuminate\Database\ConnectionInterface'),
-            new Illuminate\Database\Query\Grammars\Grammar,
+            new \Illuminate\Database\Query\Grammars\Grammar,
             m::mock('Illuminate\Database\Query\Processors\Processor'),
         ])->makePartial();
 

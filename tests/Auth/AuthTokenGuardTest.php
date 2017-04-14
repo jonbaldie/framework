@@ -1,5 +1,8 @@
 <?php
 
+namespace Illuminate\Tests\Auth;
+
+use Mockery;
 use Illuminate\Http\Request;
 use Illuminate\Auth\TokenGuard;
 use PHPUnit\Framework\TestCase;

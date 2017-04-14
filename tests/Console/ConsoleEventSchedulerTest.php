@@ -1,5 +1,7 @@
 <?php
 
+namespace Illuminate\Tests\Console;
+
 use Mockery as m;
 use PHPUnit\Framework\TestCase;
 use Illuminate\Console\Scheduling\Schedule;
@@ -10,8 +12,12 @@ class ConsoleEventSchedulerTest extends TestCase
     {
         parent::setUp();
 
-        \Illuminate\Container\Container::getInstance()->instance(
-            'Illuminate\Console\Scheduling\Schedule', $this->schedule = new Schedule(m::mock('Illuminate\Contracts\Cache\Repository'))
+        $container = \Illuminate\Container\Container::getInstance();
+
+        $container->instance('Illuminate\Console\Scheduling\Mutex', m::mock('Illuminate\Console\Scheduling\CacheMutex'));
+
+        $container->instance(
+            'Illuminate\Console\Scheduling\Schedule', $this->schedule = new Schedule(m::mock('Illuminate\Console\Scheduling\Mutex'))
         );
     }
 
@@ -85,7 +91,7 @@ class FooClassStub
     }
 }
 
-class ConsoleCommandStub extends Illuminate\Console\Command
+class ConsoleCommandStub extends \Illuminate\Console\Command
 {
     protected $signature = 'foo:bar';
 

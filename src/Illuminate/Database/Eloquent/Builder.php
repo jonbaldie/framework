@@ -7,7 +7,8 @@ use BadMethodCallException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Pagination\Paginator;
-use Illuminate\Database\Query\Expression;
+use Illuminate\Contracts\Support\Arrayable;
+use Illuminate\Database\Concerns\BuildsQueries;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -17,7 +18,7 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
  */
 class Builder
 {
-    use Concerns\QueriesRelationships;
+    use BuildsQueries, Concerns\QueriesRelationships;
 
     /**
      * The base query builder instance.
@@ -41,11 +42,18 @@ class Builder
     protected $eagerLoad = [];
 
     /**
-     * All of the registered builder macros.
+     * All of the globally registered builder macros.
      *
      * @var array
      */
-    protected $macros = [];
+    protected static $macros = [];
+
+    /**
+     * All of the locally registered builder macros.
+     *
+     * @var array
+     */
+    protected $localMacros = [];
 
     /**
      * A replacement for the typical delete function.
@@ -156,27 +164,6 @@ class Builder
     }
 
     /**
-     * Apply the callback's query changes if the given "value" is true.
-     *
-     * @param  bool  $value
-     * @param  \Closure  $callback
-     * @param  \Closure  $default
-     * @return $this
-     */
-    public function when($value, $callback, $default = null)
-    {
-        $builder = $this;
-
-        if ($value) {
-            $builder = $callback($builder);
-        } elseif ($default) {
-            $builder = $default($builder);
-        }
-
-        return $builder;
-    }
-
-    /**
      * Add a where clause on the primary key to the query.
      *
      * @param  mixed  $id
@@ -184,7 +171,7 @@ class Builder
      */
     public function whereKey($id)
     {
-        if (is_array($id)) {
+        if (is_array($id) || $id instanceof Arrayable) {
             $this->query->whereIn($this->model->getQualifiedKeyName(), $id);
 
             return $this;
@@ -198,7 +185,7 @@ class Builder
      *
      * @param  string|\Closure  $column
      * @param  string  $operator
-     * @param  mixed   $value
+     * @param  mixed  $value
      * @param  string  $boolean
      * @return $this
      */
@@ -222,7 +209,7 @@ class Builder
      *
      * @param  string|\Closure  $column
      * @param  string  $operator
-     * @param  mixed   $value
+     * @param  mixed  $value
      * @return \Illuminate\Database\Eloquent\Builder|static
      */
     public function orWhere($column, $operator = null, $value = null)
@@ -231,11 +218,40 @@ class Builder
     }
 
     /**
+     * Create a collection of models from plain arrays.
+     *
+     * @param  array  $items
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function hydrate(array $items)
+    {
+        $instance = $this->newModelInstance();
+
+        return $instance->newCollection(array_map(function ($item) use ($instance) {
+            return $instance->newFromBuilder($item);
+        }, $items));
+    }
+
+    /**
+     * Create a collection of models from a raw query.
+     *
+     * @param  string  $query
+     * @param  array  $bindings
+     * @return \Illuminate\Database\Eloquent\Collection
+     */
+    public function fromQuery($query, $bindings = [])
+    {
+        return $this->hydrate(
+            $this->query->getConnection()->select($query, $bindings)
+        );
+    }
+
+    /**
      * Find a model by its primary key.
      *
      * @param  mixed  $id
      * @param  array  $columns
-     * @return mixed
+     * @return \Illuminate\Database\Eloquent\Model|\Illuminate\Database\Eloquent\Collection|static[]|static|null
      */
     public function find($id, $columns = ['*'])
     {
@@ -301,9 +317,7 @@ class Builder
             return $model;
         }
 
-        return $this->model->newInstance()->setConnection(
-            $this->query->getConnection()->getName()
-        );
+        return $this->newModelInstance();
     }
 
     /**
@@ -319,9 +333,7 @@ class Builder
             return $instance;
         }
 
-        return $this->model->newInstance($attributes + $values)->setConnection(
-            $this->query->getConnection()->getName()
-        );
+        return $this->newModelInstance($attributes + $values);
     }
 
     /**
@@ -337,13 +349,9 @@ class Builder
             return $instance;
         }
 
-        $instance = $this->model->newInstance($attributes + $values)->setConnection(
-            $this->query->getConnection()->getName()
-        );
-
-        $instance->save();
-
-        return $instance;
+        return tap($this->newModelInstance($attributes + $values), function ($instance) {
+            $instance->save();
+        });
     }
 
     /**
@@ -358,17 +366,6 @@ class Builder
         return tap($this->firstOrNew($attributes), function ($instance) use ($values) {
             $instance->fill($values)->save();
         });
-    }
-
-    /**
-     * Execute the query and get the first result.
-     *
-     * @param  array  $columns
-     * @return \Illuminate\Database\Eloquent\Model|static|null
-     */
-    public function first($columns = ['*'])
-    {
-        return $this->take(1)->get($columns)->first();
     }
 
     /**
@@ -452,8 +449,7 @@ class Builder
     public function getModels($columns = ['*'])
     {
         return $this->model->hydrate(
-            $this->query->get($columns)->all(),
-            $this->model->getConnectionName()
+            $this->query->get($columns)->all()
         )->all();
     }
 
@@ -583,53 +579,20 @@ class Builder
     }
 
     /**
-     * Chunk the results of the query.
-     *
-     * @param  int  $count
-     * @param  callable  $callback
-     * @return bool
-     */
-    public function chunk($count, callable $callback)
-    {
-        $this->enforceOrderBy();
-
-        $page = 1;
-
-        do {
-            // We'll execute the query for the given page and get the results. If there are
-            // no results we can just break and return from here. When there are results
-            // we will call the callback with the current chunk of these results here.
-            $results = $this->forPage($page, $count)->get();
-
-            $countResults = $results->count();
-
-            if ($countResults == 0) {
-                break;
-            }
-
-            // On each chunk result set, we will pass them to the callback and then let the
-            // developer take care of everything within the callback, which allows us to
-            // keep the memory low for spinning through large result sets for working.
-            if ($callback($results) === false) {
-                return false;
-            }
-
-            $page++;
-        } while ($countResults == $count);
-
-        return true;
-    }
-
-    /**
      * Chunk the results of a query by comparing numeric IDs.
      *
      * @param  int  $count
      * @param  callable  $callback
      * @param  string  $column
+     * @param  string|null  $alias
      * @return bool
      */
-    public function chunkById($count, callable $callback, $column = 'id')
+    public function chunkById($count, callable $callback, $column = null, $alias = null)
     {
+        $column = is_null($column) ? $this->getModel()->getKeyName() : $column;
+
+        $alias = is_null($alias) ? $column : $alias;
+
         $lastId = 0;
 
         do {
@@ -653,7 +616,7 @@ class Builder
                 return false;
             }
 
-            $lastId = $results->last()->{$column};
+            $lastId = $results->last()->{$alias};
         } while ($countResults == $count);
 
         return true;
@@ -669,24 +632,6 @@ class Builder
         if (empty($this->query->orders) && empty($this->query->unionOrders)) {
             $this->orderBy($this->model->getQualifiedKeyName(), 'asc');
         }
-    }
-
-    /**
-     * Execute a callback over each item while chunking.
-     *
-     * @param  callable  $callback
-     * @param  int  $count
-     * @return bool
-     */
-    public function each(callable $callback, $count = 1000)
-    {
-        return $this->chunk($count, function ($results) use ($callback) {
-            foreach ($results as $key => $value) {
-                if ($callback($value, $key) === false) {
-                    return false;
-                }
-            }
-        });
     }
 
     /**
@@ -765,6 +710,32 @@ class Builder
             'path' => Paginator::resolveCurrentPath(),
             'pageName' => $pageName,
         ]);
+    }
+
+    /**
+     * Save a new model and return the instance.
+     *
+     * @param  array  $attributes
+     * @return \Illuminate\Database\Eloquent\Model
+     */
+    public function create(array $attributes = [])
+    {
+        return tap($this->newModelInstance($attributes), function ($instance) {
+            $instance->save();
+        });
+    }
+
+    /**
+     * Save a new model and return the instance. Allow mass-assignment.
+     *
+     * @param  array  $attributes
+     * @return \Illuminate\Database\Eloquent\Model
+     */
+    public function forceCreate(array $attributes)
+    {
+        return $this->model->unguarded(function () use ($attributes) {
+            return $this->newModelInstance()->create($attributes);
+        });
     }
 
     /**
@@ -930,8 +901,8 @@ class Builder
     /**
      * Apply the given scope on the current builder instance.
      *
-     * @param  callable $scope
-     * @param  array $parameters
+     * @param  callable  $scope
+     * @param  array  $parameters
      * @return mixed
      */
     protected function callScope(callable $scope, $parameters = [])
@@ -1049,6 +1020,19 @@ class Builder
     }
 
     /**
+     * Create a new instance of the model being queried.
+     *
+     * @param  array  $attributes
+     * @return \Illuminate\Database\Eloquent\Model
+     */
+    public function newModelInstance($attributes = [])
+    {
+        return $this->model->newInstance($attributes)->setConnection(
+            $this->query->getConnection()->getName()
+        );
+    }
+
+    /**
      * Parse a list of relations into individuals.
      *
      * @param  array  $relations
@@ -1100,7 +1084,7 @@ class Builder
      * Parse the nested relationships in a relation.
      *
      * @param  string  $name
-     * @param  array   $results
+     * @param  array  $results
      * @return array
      */
     protected function addNestedWiths($name, $results)
@@ -1205,18 +1189,6 @@ class Builder
     }
 
     /**
-     * Extend the builder with a given callback.
-     *
-     * @param  string    $name
-     * @param  \Closure  $callback
-     * @return void
-     */
-    public function macro($name, Closure $callback)
-    {
-        $this->macros[$name] = $callback;
-    }
-
-    /**
      * Get the given macro by name.
      *
      * @param  string  $name
@@ -1224,22 +1196,36 @@ class Builder
      */
     public function getMacro($name)
     {
-        return Arr::get($this->macros, $name);
+        return Arr::get($this->localMacros, $name);
     }
 
     /**
      * Dynamically handle calls into the query instance.
      *
      * @param  string  $method
-     * @param  array   $parameters
+     * @param  array  $parameters
      * @return mixed
      */
     public function __call($method, $parameters)
     {
-        if (isset($this->macros[$method])) {
+        if ($method === 'macro') {
+            $this->localMacros[$parameters[0]] = $parameters[1];
+
+            return;
+        }
+
+        if (isset($this->localMacros[$method])) {
             array_unshift($parameters, $this);
 
-            return $this->macros[$method](...$parameters);
+            return $this->localMacros[$method](...$parameters);
+        }
+
+        if (isset(static::$macros[$method]) and static::$macros[$method] instanceof Closure) {
+            return call_user_func_array(static::$macros[$method]->bindTo($this, static::class), $parameters);
+        }
+
+        if (isset(static::$macros[$method])) {
+            return call_user_func_array(static::$macros[$method]->bindTo($this, static::class), $parameters);
         }
 
         if (method_exists($this->model, $scope = 'scope'.ucfirst($method))) {
@@ -1253,6 +1239,34 @@ class Builder
         $this->query->{$method}(...$parameters);
 
         return $this;
+    }
+
+    /**
+     * Dynamically handle calls into the query instance.
+     *
+     * @param  string  $method
+     * @param  array  $parameters
+     * @return mixed
+     *
+     * @throws \BadMethodCallException
+     */
+    public static function __callStatic($method, $parameters)
+    {
+        if ($method === 'macro') {
+            static::$macros[$parameters[0]] = $parameters[1];
+
+            return;
+        }
+
+        if (! isset(static::$macros[$method])) {
+            throw new BadMethodCallException("Method {$method} does not exist.");
+        }
+
+        if (static::$macros[$method] instanceof Closure) {
+            return call_user_func_array(Closure::bind(static::$macros[$method], null, static::class), $parameters);
+        }
+
+        return call_user_func_array(static::$macros[$method], $parameters);
     }
 
     /**

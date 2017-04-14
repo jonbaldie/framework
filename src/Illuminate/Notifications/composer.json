@@ -19,6 +19,7 @@
         "illuminate/bus": "5.5.*",
         "illuminate/container": "5.5.*",
         "illuminate/contracts": "5.5.*",
+        "illuminate/filesystem": "5.5.*",
         "illuminate/mail": "5.5.*",
         "illuminate/queue": "5.5.*",
         "illuminate/support": "5.5.*",
@@ -35,9 +36,9 @@
         }
     },
     "suggest": {
-        "guzzlehttp/guzzle": "Required to use the Slack transport.",
+        "guzzlehttp/guzzle": "Required to use the Slack transport (~6.0)",
         "illuminate/database": "Required to use the database transport (5.5.*).",
-        "nexmo/client": "Required to use the Nexmo transport."
+        "nexmo/client": "Required to use the Nexmo transport (~1.0)."
     },
     "config": {
         "sort-packages": true

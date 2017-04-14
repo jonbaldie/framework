@@ -8,12 +8,10 @@ use JsonSerializable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Contracts\Support\Jsonable;
-use Illuminate\Contracts\Events\Dispatcher;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Routing\UrlRoutable;
 use Illuminate\Contracts\Queue\QueueableEntity;
 use Illuminate\Database\Eloquent\Relations\Pivot;
-use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\ConnectionResolverInterface as Resolver;
 
@@ -271,6 +269,10 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
 
         $model->exists = $exists;
 
+        $model->setConnection(
+            $this->getConnectionName()
+        );
+
         return $model;
     }
 
@@ -320,63 +322,6 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
         $instance = new static;
 
         return $instance->newQuery()->useWritePdo();
-    }
-
-    /**
-     * Save a new model and return the instance.
-     *
-     * @param  array  $attributes
-     * @return static
-     */
-    public static function create(array $attributes = [])
-    {
-        return tap(new static($attributes), function ($model) {
-            $model->save();
-        });
-    }
-
-    /**
-     * Save a new model and return the instance. Allow mass-assignment.
-     *
-     * @param  array  $attributes
-     * @return static
-     */
-    public static function forceCreate(array $attributes)
-    {
-        return static::unguarded(function () use ($attributes) {
-            return (new static)->create($attributes);
-        });
-    }
-
-    /**
-     * Create a collection of models from plain arrays.
-     *
-     * @param  array  $items
-     * @param  string|null  $connection
-     * @return \Illuminate\Database\Eloquent\Collection
-     */
-    public static function hydrate(array $items, $connection = null)
-    {
-        $instance = (new static)->setConnection($connection);
-
-        return $instance->newCollection(array_map(function ($item) use ($instance) {
-            return $instance->newFromBuilder($item);
-        }, $items));
-    }
-
-    /**
-     * Create a collection of models from a raw query.
-     *
-     * @param  string  $query
-     * @param  array  $bindings
-     * @param  string|null  $connection
-     * @return \Illuminate\Database\Eloquent\Collection
-     */
-    public static function fromQuery($query, $bindings = [], $connection = null)
-    {
-        $instance = (new static)->setConnection($connection);
-
-        return static::hydrate($instance->getConnection()->select($query, $bindings), $connection);
     }
 
     /**
@@ -465,7 +410,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
             return $query->{$method}($column, $amount, $extra);
         }
 
-        $this->incrementOrDecrementAttributeValue($column, $amount, $method);
+        $this->incrementOrDecrementAttributeValue($column, $amount, $extra, $method);
 
         return $query->where(
             $this->getKeyName(), $this->getKey()
@@ -477,12 +422,15 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
      *
      * @param  string  $column
      * @param  int  $amount
+     * @param  array  $extra
      * @param  string  $method
      * @return void
      */
-    protected function incrementOrDecrementAttributeValue($column, $amount, $method)
+    protected function incrementOrDecrementAttributeValue($column, $amount, $extra, $method)
     {
         $this->{$column} = $this->{$column} + ($method == 'increment' ? $amount : $amount * -1);
+
+        $this->forceFill($extra);
 
         $this->syncOriginalAttribute($column);
     }
@@ -623,7 +571,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
         // First we need to create a fresh query instance and touch the creation and
         // update timestamp on the model which are maintained by us for developer
         // convenience. Then we will just continue saving the model instances.
-        if ($this->timestamps) {
+        if ($this->usesTimestamps()) {
             $this->updateTimestamps();
         }
 
@@ -681,7 +629,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
         // First we'll need to create a fresh query instance and touch the creation and
         // update timestamps on this model, which are maintained by us for developer
         // convenience. After, we will just continue saving these model instances.
-        if ($this->timestamps) {
+        if ($this->usesTimestamps()) {
             $this->updateTimestamps();
         }
 
@@ -749,7 +697,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
         // We will actually pull the models from the database table and call delete on
         // each of them individually so that their events get fired properly with a
         // correct set of attributes in case the developers wants to check these.
-        $key = with($instance = new static)->getKeyName();
+        $key = ($instance = new static)->getKeyName();
 
         foreach ($instance->whereIn($key, $ids)->get() as $model) {
             if ($model->delete()) {
@@ -791,8 +739,6 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
 
         $this->performDeleteOnModel();
 
-        $this->exists = false;
-
         // Once the model has been deleted, we will fire off the deleted event so that
         // the developers may hook into post-delete operations. We will then return
         // a boolean true as the delete is presumably successful on the database.
@@ -821,6 +767,8 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
     protected function performDeleteOnModel()
     {
         $this->setKeysForSaveQuery($this->newQueryWithoutScopes())->delete();
+
+        $this->exists = false;
     }
 
     /**
@@ -925,7 +873,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
      */
     public function newPivot(Model $parent, array $attributes, $table, $exists, $using = null)
     {
-        return $using ? new $using($parent, $attributes, $table, $exists)
+        return $using ? $using::fromRawAttributes($parent, $attributes, $table, $exists)
                       : new Pivot($parent, $attributes, $table, $exists);
     }
 
@@ -1014,12 +962,13 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
     /**
      * Determine if two models have the same ID and belong to the same table.
      *
-     * @param  \Illuminate\Database\Eloquent\Model  $model
+     * @param  \Illuminate\Database\Eloquent\Model|null  $model
      * @return bool
      */
-    public function is(Model $model)
+    public function is($model)
     {
-        return $this->getKey() === $model->getKey() &&
+        return ! is_null($model) &&
+               $this->getKey() === $model->getKey() &&
                $this->getTable() === $model->getTable() &&
                $this->getConnectionName() === $model->getConnectionName();
     }
@@ -1160,13 +1109,26 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
     }
 
     /**
-     * Get the auto incrementing key type.
+     * Get the auto-incrementing key type.
      *
      * @return string
      */
     public function getKeyType()
     {
         return $this->keyType;
+    }
+
+    /**
+     * Set the data type for the primary key.
+     *
+     * @param  string  $type
+     * @return $this
+     */
+    public function setKeyType($type)
+    {
+        $this->keyType = $type;
+
+        return $this;
     }
 
     /**
@@ -1296,7 +1258,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
      */
     public function offsetExists($offset)
     {
-        return isset($this->$offset);
+        return ! is_null($this->getAttribute($offset));
     }
 
     /**
@@ -1307,7 +1269,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
      */
     public function offsetGet($offset)
     {
-        return $this->$offset;
+        return $this->getAttribute($offset);
     }
 
     /**
@@ -1319,7 +1281,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
      */
     public function offsetSet($offset, $value)
     {
-        $this->$offset = $value;
+        $this->setAttribute($offset, $value);
     }
 
     /**
@@ -1330,7 +1292,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
      */
     public function offsetUnset($offset)
     {
-        unset($this->$offset);
+        unset($this->attributes[$offset], $this->relations[$offset]);
     }
 
     /**
@@ -1341,7 +1303,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
      */
     public function __isset($key)
     {
-        return ! is_null($this->getAttribute($key));
+        return $this->offsetExists($key);
     }
 
     /**
@@ -1352,7 +1314,7 @@ abstract class Model implements ArrayAccess, Arrayable, Jsonable, JsonSerializab
      */
     public function __unset($key)
     {
-        unset($this->attributes[$key], $this->relations[$key]);
+        $this->offsetUnset($key);
     }
 
     /**

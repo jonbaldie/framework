@@ -3,14 +3,18 @@
 namespace Illuminate\Routing;
 
 use Closure;
+use ArrayObject;
+use JsonSerializable;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Container\Container;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Traits\Macroable;
+use Illuminate\Contracts\Support\Jsonable;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Routing\BindingRegistrar;
 use Psr\Http\Message\ResponseInterface as PsrResponseInterface;
 use Illuminate\Contracts\Routing\Registrar as RegistrarContract;
@@ -245,8 +249,8 @@ class Router implements RegistrarContract, BindingRegistrar
      */
     public function resource($name, $controller, array $options = [])
     {
-        if ($this->container && $this->container->bound('Illuminate\Routing\ResourceRegistrar')) {
-            $registrar = $this->container->make('Illuminate\Routing\ResourceRegistrar');
+        if ($this->container && $this->container->bound(ResourceRegistrar::class)) {
+            $registrar = $this->container->make(ResourceRegistrar::class);
         } else {
             $registrar = new ResourceRegistrar($this);
         }
@@ -490,7 +494,7 @@ class Router implements RegistrarContract, BindingRegistrar
      * Dispatch the request to the application.
      *
      * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @return \Illuminate\Http\Response|\Illuminate\Http\JsonResponse
      */
     public function dispatch(Request $request)
     {
@@ -533,7 +537,7 @@ class Router implements RegistrarContract, BindingRegistrar
     {
         $this->current = $route = $this->routes->match($request);
 
-        $this->container->instance('Illuminate\Routing\Route', $route);
+        $this->container->instance(Route::class, $route);
 
         return $route;
     }
@@ -593,12 +597,19 @@ class Router implements RegistrarContract, BindingRegistrar
      *
      * @param  \Symfony\Component\HttpFoundation\Request  $request
      * @param  mixed  $response
-     * @return \Illuminate\Http\Response
+     * @return \Illuminate\Http\Response|\Illuminate\Http\JsonResponse
      */
-    public function prepareResponse($request, $response)
+    public static function prepareResponse($request, $response)
     {
         if ($response instanceof PsrResponseInterface) {
             $response = (new HttpFoundationFactory)->createResponse($response);
+        } elseif (! $response instanceof SymfonyResponse &&
+                   ($response instanceof Arrayable ||
+                    $response instanceof Jsonable ||
+                    $response instanceof ArrayObject ||
+                    $response instanceof JsonSerializable ||
+                    is_array($response))) {
+            $response = new JsonResponse($response);
         } elseif (! $response instanceof SymfonyResponse) {
             $response = new Response($response);
         }
@@ -683,6 +694,27 @@ class Router implements RegistrarContract, BindingRegistrar
     }
 
     /**
+     * Check if a middlewareGroup with the given name exists.
+     *
+     * @param  string  $name
+     * @return bool
+     */
+    public function hasMiddlewareGroup($name)
+    {
+        return array_key_exists($name, $this->middlewareGroups);
+    }
+
+    /**
+     * Get all of the defined middleware groups.
+     *
+     * @return array
+     */
+    public function getMiddlewareGroups()
+    {
+        return $this->middlewareGroups;
+    }
+
+    /**
      * Register a group of middleware.
      *
      * @param  string  $name
@@ -725,7 +757,11 @@ class Router implements RegistrarContract, BindingRegistrar
      */
     public function pushMiddlewareToGroup($group, $middleware)
     {
-        if (isset($this->middlewareGroups[$group]) && ! in_array($middleware, $this->middlewareGroups[$group])) {
+        if (! array_key_exists($group, $this->middlewareGroups)) {
+            $this->middlewareGroups[$group] = [];
+        }
+
+        if (! in_array($middleware, $this->middlewareGroups[$group])) {
             $this->middlewareGroups[$group][] = $middleware;
         }
 
@@ -879,7 +915,15 @@ class Router implements RegistrarContract, BindingRegistrar
      */
     public function has($name)
     {
-        return $this->routes->hasNamedRoute($name);
+        $names = is_array($name) ? $name : func_get_args();
+
+        foreach ($names as $value) {
+            if (! $this->routes->hasNamedRoute($value)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -980,7 +1024,7 @@ class Router implements RegistrarContract, BindingRegistrar
 
         // Password Reset Routes...
         $this->get('password/reset', 'Auth\ForgotPasswordController@showLinkRequestForm')->name('password.request');
-        $this->post('password/email', 'Auth\ForgotPasswordController@sendResetLinkEmail');
+        $this->post('password/email', 'Auth\ForgotPasswordController@sendResetLinkEmail')->name('password.email');
         $this->get('password/reset/{token}', 'Auth\ResetPasswordController@showResetForm')->name('password.reset');
         $this->post('password/reset', 'Auth\ResetPasswordController@reset');
     }
